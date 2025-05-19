@@ -10,7 +10,8 @@
     "transferTokens": "ts-node scripts/transferTokens",
     "trustline": "ts-node scripts/trustline",
     "setAuthTrustline": "ts-node scripts/setAuthTrustline",
-    "approveTrustLine": "ts-node scripts/approveTrustLine"
+    "approveTrustLine": "ts-node scripts/approveTrustLine",
+    "mptCreate": "ts-node scripts/mptCreate"
   },
   "dependencies": {
     "dotenv": "^16.0.3",

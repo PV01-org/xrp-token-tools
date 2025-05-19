@@ -5,10 +5,11 @@ import {
   TransactionResponse,
   TransactionStatus,
 } from "fireblocks-sdk";
-import { Client as RippleClient, Transaction, hashes } from "xrpl";
+import { Client as RippleClient, hashes } from "xrpl";
 import binaryCodec from "ripple-binary-codec";
 import isEqual from "lodash.isequal";
 import { sentenceCase } from "sentence-case";
+import { RawTransaction } from "../types/mpt";
 
 export class XrpSigner {
   private static TERMINAL_STATUSES = [
@@ -25,11 +26,7 @@ export class XrpSigner {
       i++;
     }
 
-    if (i === 0) {
-      return buf;
-    }
-
-    return buf.slice(i);
+    return i === 0 ? buf : buf.slice(i);
   }
 
   private static constructLength(arr: number[], len: number) {
@@ -39,15 +36,11 @@ export class XrpSigner {
     }
 
     let octets = 1 + ((Math.log(len) / Math.LN2) >>> 3);
-
     arr.push(octets | 0x80);
-
     while (--octets) {
       arr.push((len >>> (octets << 3)) & 0xff);
     }
-
     arr.push(len);
-
     return arr;
   }
 
@@ -55,49 +48,35 @@ export class XrpSigner {
     let r = [...Buffer.from(rHex ?? "", "hex")];
     let s = [...Buffer.from(sHex ?? "", "hex")];
 
-    // Pad values
-    if (r[0] & 0x80) {
-      r = [0].concat(r);
-    }
-    // Pad values
-    if (s[0] & 0x80) {
-      s = [0].concat(s);
-    }
+    if (r[0] & 0x80) r = [0, ...r];
+    if (s[0] & 0x80) s = [0, ...s];
 
     r = XrpSigner.rmPadding(r);
     s = XrpSigner.rmPadding(s);
 
-    while (!s[0] && !(s[1] & 0x80)) {
-      s = s.slice(1);
-    }
+    while (!s[0] && !(s[1] & 0x80)) s = s.slice(1);
 
     let derBytes = XrpSigner.constructLength([0x02], r.length);
-    derBytes = derBytes.concat(r);
-    derBytes.push(0x02);
+    derBytes = [...derBytes, ...r, 0x02];
     derBytes = XrpSigner.constructLength(derBytes, s.length);
-    const backHalf = derBytes.concat(s);
-    derBytes = XrpSigner.constructLength([0x30], backHalf.length);
-    derBytes = derBytes.concat(backHalf);
+    derBytes = [
+      ...XrpSigner.constructLength([0x30], derBytes.length + s.length),
+      ...derBytes,
+      ...s,
+    ];
 
-    const derHex = Buffer.from(derBytes).toString("hex").toUpperCase();
-
-    return derHex;
+    return Buffer.from(derBytes).toString("hex").toUpperCase();
   }
 
-  private static checkTxSerialization(serialized: string, tx: Transaction) {
-    // Decode the serialized transaction:
+  private static checkTxSerialization(serialized: string, tx: RawTransaction) {
     const decoded = binaryCodec.decode(serialized);
 
-    // ...And ensure it is equal to the original tx, except:
-    // - It must have a TxnSignature or Signers (multisign).
     if (!decoded.TxnSignature && !decoded.Signers) {
       throw new Error(
         "Serialized transaction must have a TxnSignature or Signers property"
       );
     }
 
-    // - If SigningPubKey was not in the original tx, then we should delete it.
-    //   But if it was in the original tx, then we should ensure that it has not been changed.
     if (!tx.SigningPubKey) {
       delete decoded.SigningPubKey;
     }
@@ -125,13 +104,11 @@ export class XrpSigner {
         console.info(
           `Raw signing tx ${txId} status: ${sentenceCase(currentStatus)}`
         );
-
         txInfo = await this.fireblocks.getTransactionById(txId);
         currentStatus = txInfo.status;
       } catch (err) {
         console.error(err);
       }
-
       await new Promise((r) => setTimeout(r, 3000));
     }
 
@@ -150,7 +127,7 @@ export class XrpSigner {
     return sig;
   }
 
-  private async signTx(tx: Transaction, note?: string) {
+  private async signTx(tx: RawTransaction, note?: string) {
     if (tx.TxnSignature || tx.Signers) {
       throw new Error(
         'txJSON must not contain "TxnSignature" or "Signers" properties'
@@ -185,28 +162,23 @@ export class XrpSigner {
 
     const sig = await this.waitForTxSignature(id, status);
 
-    const derSig = XrpSigner.toDER(sig?.r, sig?.s);
-
-    tx.TxnSignature = derSig;
+    tx.TxnSignature = XrpSigner.toDER(sig?.r, sig?.s);
 
     const serialized = binaryCodec.encode(tx);
-
     XrpSigner.checkTxSerialization(serialized, tx);
-
-    const ledgerHash = hashes.hashSignedTx(serialized);
 
     return {
       tx: serialized,
-      hash: ledgerHash,
+      hash: hashes.hashSignedTx(serialized),
     };
   }
 
-  public async submitTransaction(tx: Transaction, note?: string) {
+  public async submitTransaction(tx: RawTransaction, note?: string) {
     if (typeof note === "string") {
       console.info(note);
     }
 
-    const _tx = await this.ripple.prepareTransaction(tx);
+    const _tx = await this.ripple.prepareTransaction(tx as any);
 
     if (typeof _tx.LastLedgerSequence === "undefined") {
       throw new Error("Transaction LastLedgerSequence not set");
