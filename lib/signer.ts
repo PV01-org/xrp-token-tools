@@ -206,6 +206,10 @@ export class XrpSigner {
       console.info(note);
     }
 
+    console.info("Submitting Transaction using signer.submitTransaction()");
+    console.info("Transaction type:", tx.TransactionType);
+    console.info("Transaction:", JSON.stringify(tx));
+
     const _tx = await this.ripple.prepareTransaction(tx);
 
     if (typeof _tx.LastLedgerSequence === "undefined") {

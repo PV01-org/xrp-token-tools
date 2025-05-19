@@ -2,7 +2,7 @@ import { AccountSet, convertStringToHex } from "xrpl";
 import { setup } from "../lib/setup";
 
 // Enter the domain name that owns this account
-const DOMAIN = "test.com";
+const DOMAIN = "app.uat.pv0.one";
 
 async function main() {
   const { ripple, signer, address } = await setup();

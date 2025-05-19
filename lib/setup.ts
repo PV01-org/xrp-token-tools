@@ -52,6 +52,10 @@ export const setup = async () => {
 
   const fireblocks = new FireblocksSDK(fireblocksApiSecret, fireblocksApiKey);
 
+  //console.log("address", address);
+  console.log("fireblocksVaultAccountIdString", fireblocksVaultAccountIdString);
+  console.log("assetId", assetId);
+
   const [{ address }] = await fireblocks.getDepositAddresses(
     fireblocksVaultAccountIdString,
     assetId
